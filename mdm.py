@@ -34,7 +34,7 @@ class ResponseModel(BaseModel):
 def main():
     # 2. Definicja argumentów linii komend
     parser = argparse.ArgumentParser(
-        description="Aktualizuje pliki wyjściowe na podstawie plików wejściowych i instrukcji za pomocą Gemini 3.5 Flash lub odpowiada na pytania."
+        description="Aktualizuje pliki wyjściowe na podstawie plików wejściowych i instrukcji za pomocą modeli Gemini lub odpowiada na pytania."
     )
     parser.add_argument(
         "--inputs", "-i", nargs="+", required=False, default=[],
@@ -48,6 +48,10 @@ def main():
         "--prompt", "-p", required=False,
         default="Zaktualizuj zawartość plików wyjściowych zgodnie z komentarzami, instrukcjami TODO lub ich wewnętrznym kontekstem.",
         help="Instrukcja (prompt) opisująca zmiany lub pytanie (opcjonalna, krótka flaga: -p)"
+    )
+    parser.add_argument(
+        "--model", "-m", default="gemini-3.5-flash",
+        help="Nazwa modelu do użycia (np. gemini-3.5-flash, gemini-2.5-pro). Narzędzie aktualnie wspiera modele z rodziny Gemini."
     )
 
     args = parser.parse_args()
@@ -69,6 +73,16 @@ def main():
     # Walidacja, czy użytkownik podał cokolwiek sensownego do wykonania
     if not args.inputs and not args.outputs and args.prompt == parser.get_default("prompt"):
         print("Błąd: Musisz podać przynajmniej pliki wejściowe (-i), pliki wyjściowe (-o) lub własny prompt.", file=sys.stderr)
+        sys.exit(1)
+
+    # Walidacja wybranego modelu (narzędzie używa SDK Google GenAI)
+    model_name = args.model
+    if not model_name.startswith("gemini-"):
+        print(
+            f"Błąd: Narzędzie 'mdm' korzysta z Google GenAI SDK i aktualnie obsługuje wyłącznie modele z rodziny Gemini (np. gemini-3.5-flash, gemini-2.5-pro).\n"
+            f"Model '{model_name}' nie jest wspierany bezpośrednio. Aby użyć modeli takich jak Claude czy GPT, wymagana jest aktualizacja biblioteki klienckiej.",
+            file=sys.stderr
+        )
         sys.exit(1)
 
     # Rozwijanie globów (*) dla plików wejściowych
@@ -171,9 +185,6 @@ def main():
             )
             sys.exit(1)
         client = genai.Client(api_key=api_key)
-
-    # Użycie rekomendowanego modelu Gemini 3.5 Flash
-    model_name = "gemini-3.5-flash"
 
     # 7. Wywołanie modelu i pobranie ustrukturyzowanej odpowiedzi
     print(f"Wysyłanie zapytania do modelu {model_name}...")
