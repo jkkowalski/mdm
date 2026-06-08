@@ -42,7 +42,7 @@ def main():
     )
     parser.add_argument(
         "--outputs", "-o", nargs="+", required=False, default=[],
-        help="Lista ścieżek do plików wyjściowych (opcjonalne, zostaną zaktualizowane lub utworzone)"
+        help="Lista ścieżek do plików wyjściowych (opcjonalne, zostaną zaktualizowane lub utworzone, obsługuje *)"
     )
     parser.add_argument(
         "--prompt", "-p", required=False,
@@ -77,9 +77,19 @@ def main():
         matched = glob.glob(pattern, recursive=True)
         if matched:
             real_inputs.extend(matched)
-        else:
+        else: 
             # Jeśli glob nic nie dopasował, zostawiamy oryginalny wzorzec, by wywołać ewentualny błąd braku pliku/katalogu
             real_inputs.append(pattern)
+
+    # Rozwijanie globów (*) dla plików wyjściowych
+    real_outputs = []
+    for pattern in args.outputs:
+        matched = glob.glob(pattern, recursive=True)
+        if matched:
+            real_outputs.extend(matched)
+        else:
+            # Ponieważ pliki wyjściowe mogą jeszcze nie istnieć, zachowujemy oryginalny wzorzec, jeśli glob nic nie znalazł
+            real_outputs.append(pattern)
 
     # 3. Odczyt zawartości plików wejściowych
     inputs_content = {}
@@ -99,7 +109,7 @@ def main():
 
     # 4. Odczyt aktualnego stanu plików wyjściowych (jeśli istnieją)
     outputs_content = {}
-    for path in args.outputs:
+    for path in real_outputs:
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -197,21 +207,61 @@ def main():
     updated_files = response_data.files
 
     # Słownik pomocniczy do mapowania nazw bazowych (na wypadek, gdyby model pominął ./ w ścieżce)
-    basename_map = {os.path.basename(path): path for path in args.outputs}
+    basename_map = {os.path.basename(path): path for path in real_outputs}
 
     if updated_files:
         print("\nAktualizacja plików na dysku:")
+        
+        # Mapowanie plików na ich docelowe ścieżki oraz identyfikacja plików nadmiarowych
+        to_process = []
+        unexpected_files = []
+        
         for file_data in updated_files:
             target_path = None
-
-            # Próba dopasowania dokładnej ścieżki
-            if file_data.filename in args.outputs:
+            if file_data.filename in real_outputs:
                 target_path = file_data.filename
             else:
-                # Rezerwowa próba dopasowania po samej nazwie pliku (np. "main.py" zamiast "./src/main.py")
                 base = os.path.basename(file_data.filename)
                 if base in basename_map:
                     target_path = basename_map[base]
+            
+            if not target_path:
+                unexpected_files.append(file_data)
+            to_process.append((file_data, target_path))
+            
+        # Wyświetlenie listy wszystkich nieoczekiwanych plików przed zadaniem pytania
+        if unexpected_files:
+            print("\nModel chce utworzyć następujące pliki, których nie ma na liście plików wyjściowych:")
+            for uf in unexpected_files:
+                print(f" - {uf.filename}")
+                
+        accept_all_unexpected = False
+        
+        for file_data, target_path in to_process:
+            if not target_path:
+                if accept_all_unexpected:
+                    target_path = file_data.filename
+                else:
+                    try:
+                        user_input = input(
+                            f"\nCzy chcesz stworzyć plik '{file_data.filename}'?\n"
+                            f"[y - tak, n - pominąć, a - stwórz wszystkie pozostałe nadmiarowe, c - anuluj]: "
+                        ).strip().lower()
+                    except (KeyboardInterrupt, EOFError):
+                        print("\nPrzerwano operację.", file=sys.stderr)
+                        sys.exit(1)
+
+                    if user_input in ('y', 'yes', 't', 'tak'):
+                        target_path = file_data.filename
+                    elif user_input in ('a', 'all', 'wszystkie'):
+                        accept_all_unexpected = True
+                        target_path = file_data.filename
+                    elif user_input in ('c', 'cancel', 'anuluj'):
+                        print("Operacja zatrzymana na żądanie użytkownika.", file=sys.stderr)
+                        sys.exit(1)
+                    else:
+                        print(f" [Pominięto] Plik '{file_data.filename}' nie został utworzony.")
+                        continue
 
             if target_path:
                 try: 
@@ -225,9 +275,6 @@ def main():
                     print(f" [OK] Zapisano plik: {target_path}")
                 except Exception as e:
                     print(f" [Błąd] Nie udało się zapisać '{target_path}': {e}", file=sys.stderr)
-            else:
-                print(f" [Pominięto] Model zwrócił plik '{file_data.filename}', którego nie było na liście wyjściowej.",
-                      file=sys.stderr)
 
 
 if __name__ == "__main__":
