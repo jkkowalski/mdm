@@ -104,7 +104,7 @@ python mdm.py -i logic.py -o test_logic.py "Napisz testy jednostkowe w pytest"
 
 Generowanie testów jednostkowych dla całego katalogu:
 ```bash
-python mdm.py -i src/ -o tests/test_all.py "Stwórz szkielet testów dla plików w tym katalogu"
+python mdm.py -i src/*.py -o tests/test_all.py "Stwórz szkielet testów dla plików w tym katalogu"
 ```
 
 ## Licencja
