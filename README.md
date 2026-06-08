@@ -65,8 +65,8 @@ Każdy z kluczowych parametrów posiada intuicyjny skrót odpowiadający pierwsz
 
 ### Argumenty:
 * `--inputs`, `-i` (opcjonalne) - Lista ścieżek do plików wejściowych, które stanowią kontekst/źródło danych dla modelu. Obsługuje dzikie karty `*` (globbing) oraz ścieżki do katalogów.
-* `--outputs`, `-o` (wymagane) - Lista ścieżek do plików wyjściowych, które mają zostać zmodyfikowane lub utworzone od zera.
-* `--prompt`, `-p` (opcjonalne) - Instrukcja tekstowa opisująca zmiany, jakie model ma wprowadzić.
+* `--outputs`, `-o` (opcjonalne) - Lista ścieżek do plików wyjściowych, które mają zostać zmodyfikowane lub utworzone od zera. Jeśli parametr nie zostanie podany, narzędzie może służyć do zadawania pytań (odpowiedź generowana jest jako wyjaśnienie bez zapisu na dysku).
+* `--prompt`, `-p` (opcjonalne) - Instrukcja tekstowa opisująca zmiany, jakie model ma wprowadzić, lub bezpośrednie pytanie.
 
 ## Zaawansowane funkcje CLI
 
@@ -88,7 +88,7 @@ Każdy z kluczowych parametrów posiada intuicyjny skrót odpowiadający pierwsz
 3. Odczytuje obecny stan plików wyjściowych (jeżeli nie istnieją, przekazuje informację o konieczności ich utworzenia od zera).
 4. Buduje szczegółowy prompt zawierający zebrany kontekst oraz instrukcję modyfikacji.
 5. Wysyła zapytanie do modelu `gemini-3.5-flash` przy użyciu mechanizmu **Structured Outputs** (gwarantującego poprawność zwracanego formatu JSON zgodnego ze schematem Pydantic).
-6. Analizuje odpowiedź i bezpiecznie zapisuje zaktualizowane pliki na dysku (tworząc w razie potrzeby brakujące katalogi nadrzędne).
+6. Analizuje odpowiedź, wyświetla ewentualne wyjaśnienie i bezpiecznie zapisuje zaktualizowane pliki na dysku (tworząc w razie potrzeby brakujące katalogi nadrzędne).
 
 ## Przykłady
 
@@ -102,10 +102,15 @@ Szybkie wywołanie bez użycia flagi `-p`:
 python mdm.py -i logic.py -o test_logic.py "Napisz testy jednostkowe w pytest"
 ```
 
+Zadanie pytania dotyczącego analizy kodu (bez modyfikacji plików wyjściowych):
+```bash
+python mdm.py -i mdm.py "Jak działa obsługa argumentów bez flagi -p?"
+```
+
 Generowanie testów jednostkowych dla całego katalogu:
 ```bash
 python mdm.py -i src/*.py -o tests/test_all.py "Stwórz szkielet testów dla plików w tym katalogu"
 ```
 
 ## Licencja
-Projekt udostępniany na licencji MIT. Autor: Jakub Kowalski (2026). Szczegóły znajdują się w pliku `LICENCE`.
+Projekt udostępniany na licencji MIT. Autor: Jakub Kowalski (2026). Szczegóły znajdują się w pliku `LICENSE`.

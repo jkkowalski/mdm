@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025 Jakub Kowalski
+# Copyright (c) 2026 Jakub Kowalski
 # Licencja: MIT
 import argparse
 import glob
@@ -20,24 +20,34 @@ class OutputFile(BaseModel):
         description="Pełna zaktualizowana lub nowo wygenerowana zawartość tego pliku wyjściowego."
     )
 
+class ResponseModel(BaseModel):
+    files: list[OutputFile] = Field(
+        default=[],
+        description="Lista plików wyjściowych do utworzenia lub zaktualizowania."
+    )
+    explanation: str | None = Field(
+        default=None,
+        description="Bezpośrednia odpowiedź tekstowa, komentarz lub wyjaśnienie dla użytkownika (np. w przypadku pytań lub jako uzupełnienie zmian)."
+    )
+
 
 def main():
     # 2. Definicja argumentów linii komend
     parser = argparse.ArgumentParser(
-        description="Aktualizuje pliki wyjściowe na podstawie plików wejściowych i instrukcji za pomocą Gemini 3.5 Flash."
+        description="Aktualizuje pliki wyjściowe na podstawie plików wejściowych i instrukcji za pomocą Gemini 3.5 Flash lub odpowiada na pytania."
     )
     parser.add_argument(
         "--inputs", "-i", nargs="+", required=False, default=[],
         help="Lista ścieżek do plików wejściowych (opcjonalne, obsługuje *, katalogi oraz automatyczną instrukcję na końcu)"
     )
     parser.add_argument(
-        "--outputs", "-o", nargs="+", required=True,
-        help="Lista ścieżek do plików wyjściowych (zostaną zaktualizowane lub utworzone)"
+        "--outputs", "-o", nargs="+", required=False, default=[],
+        help="Lista ścieżek do plików wyjściowych (opcjonalne, zostaną zaktualizowane lub utworzone)"
     )
     parser.add_argument(
         "--prompt", "-p", required=False,
         default="Zaktualizuj zawartość plików wyjściowych zgodnie z komentarzami, instrukcjami TODO lub ich wewnętrznym kontekstem.",
-        help="Instrukcja (prompt) opisująca zmiany, jakie model ma wprowadzić (opcjonalna, krótka flaga: -p)"
+        help="Instrukcja (prompt) opisująca zmiany lub pytanie (opcjonalna, krótka flaga: -p)"
     )
 
     args = parser.parse_args()
@@ -56,9 +66,9 @@ def main():
             elif args.outputs and args.outputs[-1] == last_arg:
                 args.outputs.pop()
 
-    # Walidacja, czy po ewentualnym usunięciu promptu wciąż mamy pliki wyjściowe
-    if not args.outputs:
-        print("Błąd: Lista plików wyjściowych (-o) nie może być pusta.", file=sys.stderr)
+    # Walidacja, czy użytkownik podał cokolwiek sensownego do wykonania
+    if not args.inputs and not args.outputs and args.prompt == parser.get_default("prompt"):
+        print("Błąd: Musisz podać przynajmniej pliki wejściowe (-i), pliki wyjściowe (-o) lub własny prompt.", file=sys.stderr)
         sys.exit(1)
 
     # Rozwijanie globów (*) dla plików wejściowych
@@ -104,7 +114,8 @@ def main():
     prompt_parts = []
     prompt_parts.append(
         "Jesteś asystentem programistycznym/edycyjnym. Twoim zadaniem jest zaktualizowanie plików wyjściowych "
-        "na podstawie dostarczonych plików wejściowych, ich dotychczasowego stanu oraz instrukcji użytkownika."
+        "na podstawie dostarczonych plików wejściowych, ich dotychczasowego stanu oraz instrukcji użytkownika. "
+        "Możesz również odpowiadać na pytania użytkownika bezpośrednio, bez modyfikacji plików, jeśli taka jest intencja."
     )
 
     if inputs_content:
@@ -112,15 +123,17 @@ def main():
         for path, content in inputs_content.items():
             prompt_parts.append(f"Ścieżka: {path}\nZawartość:\n{content}\n" + "-" * 30)
 
-    prompt_parts.append("\n=== AKTUALNY STAN PLIKÓW WYJŚCIOWYCH (OUTPUTS) ===")
-    for path, content in outputs_content.items():
-        prompt_parts.append(f"Ścieżka: {path}\nZawartość:\n{content}\n" + "-" * 30)
+    if outputs_content:
+        prompt_parts.append("\n=== AKTUALNY STAN PLIKÓW WYJŚCIOWYCH (OUTPUTS) ===")
+        for path, content in outputs_content.items():
+            prompt_parts.append(f"Ścieżka: {path}\nZawartość:\n{content}\n" + "-" * 30)
 
-    prompt_parts.append("\n=== INSTRUKCJA MODYFIKACJI ===")
+    prompt_parts.append("\n=== INSTRUKCJA MODYFIKACJI LUB PYTANIE ===")
     prompt_parts.append(args.prompt)
 
     prompt_parts.append(
-        "\nZwróć zaktualizowaną zawartość dla każdego z wnioskowanych plików wyjściowych, stosując się dokładnie do poniższego schematu JSON."
+        "\nZwróć odpowiedź stosując się dokładnie do poniższego schematu JSON. "
+        "Jeśli użytkownik zadał pytanie lub nie podał plików wyjściowych, umieść odpowiedź tekstową w polu 'explanation'."
     )
 
     prompt = "\n".join(prompt_parts)
@@ -158,10 +171,10 @@ def main():
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
-            config={
+            config={ 
                 "response_mime_type": "application/json",
-                # Wskazujemy SDK, że chcemy otrzymać listę obiektów OutputFile
-                "response_schema": list[OutputFile],
+                # Wskazujemy SDK, że chcemy otrzymać obiekt ResponseModel
+                "response_schema": ResponseModel,
             },
         )
     except Exception as e:
@@ -169,43 +182,52 @@ def main():
         sys.exit(1)
 
     # 8. Parsowanie odpowiedzi i zapis na dysku
-    updated_files = response.parsed  # SDK automatycznie parsuje odpowiedź do listy obiektów Pydantic
+    response_data = response.parsed  # SDK automatycznie parsuje odpowiedź do obiektu Pydantic ResponseModel
 
-    if not updated_files:
+    if not response_data:
         print("Błąd: Model zwrócił pustą odpowiedź lub błąd struktury danych.", file=sys.stderr)
         sys.exit(1)
+
+    # Wyświetlenie bezpośredniej odpowiedzi / wyjaśnienia użytkownikowi
+    if response_data.explanation:
+        print("\n=== ODPOWIEDŹ OD MODELU ===")
+        print(response_data.explanation)
+        print("=" * 27)
+
+    updated_files = response_data.files
 
     # Słownik pomocniczy do mapowania nazw bazowych (na wypadek, gdyby model pominął ./ w ścieżce)
     basename_map = {os.path.basename(path): path for path in args.outputs}
 
-    print("\nAktualizacja plików na dysku:")
-    for file_data in updated_files:
-        target_path = None
+    if updated_files:
+        print("\nAktualizacja plików na dysku:")
+        for file_data in updated_files:
+            target_path = None
 
-        # Próba dopasowania dokładnej ścieżki
-        if file_data.filename in args.outputs:
-            target_path = file_data.filename
-        else:
-            # Rezerwowa próba dopasowania po samej nazwie pliku (np. "main.py" zamiast "./src/main.py")
-            base = os.path.basename(file_data.filename)
-            if base in basename_map:
-                target_path = basename_map[base]
+            # Próba dopasowania dokładnej ścieżki
+            if file_data.filename in args.outputs:
+                target_path = file_data.filename
+            else:
+                # Rezerwowa próba dopasowania po samej nazwie pliku (np. "main.py" zamiast "./src/main.py")
+                base = os.path.basename(file_data.filename)
+                if base in basename_map:
+                    target_path = basename_map[base]
 
-        if target_path:
-            try:
-                # Upewnienie się, że katalog docelowy istnieje
-                dir_name = os.path.dirname(target_path)
-                if dir_name:
-                    os.makedirs(dir_name, exist_ok=True)
+            if target_path:
+                try: 
+                    # Upewnienie się, że katalog docelowy istnieje
+                    dir_name = os.path.dirname(target_path)
+                    if dir_name:
+                        os.makedirs(dir_name, exist_ok=True)
 
-                with open(target_path, "w", encoding="utf-8") as f:
-                    f.write(file_data.content)
-                print(f" [OK] Zapisano plik: {target_path}")
-            except Exception as e:
-                print(f" [Błąd] Nie udało się zapisać '{target_path}': {e}", file=sys.stderr)
-        else:
-            print(f" [Pominięto] Model zwrócił plik '{file_data.filename}', którego nie było na liście wyjściowej.",
-                  file=sys.stderr)
+                    with open(target_path, "w", encoding="utf-8") as f:
+                        f.write(file_data.content)
+                    print(f" [OK] Zapisano plik: {target_path}")
+                except Exception as e:
+                    print(f" [Błąd] Nie udało się zapisać '{target_path}': {e}", file=sys.stderr)
+            else:
+                print(f" [Pominięto] Model zwrócił plik '{file_data.filename}', którego nie było na liście wyjściowej.",
+                      file=sys.stderr)
 
 
 if __name__ == "__main__":
