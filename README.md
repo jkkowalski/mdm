@@ -1,6 +1,6 @@
 # mdm.py - AI-powered File Editor & Generator
 
-Narzędzie konsolowe w języku Python wykorzystujące model **Gemini 3.5 Flash** do inteligentnego aktualizowania lub tworzenia plików wyjściowych na podstawie dostarczonych plików wejściowych, ich dotychczasowej zawartości oraz instrukcji użytkownika.
+Narzędzie konsolowe w języku Python wykorzystujące model **Gemini** (domyślnie `gemini-3.5-flash`) do inteligentnego aktualizowania lub tworzenia plików wyjściowych na podstawie dostarczonych plików wejściowych, ich dotychczasowej zawartości oraz instrukcji użytkownika.
 
 ## Spis treści
 - [Opis projektu](#opis-projektu)
@@ -14,7 +14,7 @@ Narzędzie konsolowe w języku Python wykorzystujące model **Gemini 3.5 Flash**
 - [Licencja](#licencja)
 
 ## Opis projektu
-Skrypt `mdm.py` umożliwia zautomatyzowaną modyfikację kodu źródłowego, dokumentacji oraz innych plików tekstowych przy użyciu sztucznej inteligencji. Przekazuje on do modelu LLM (Gemini) kontekst w postaci plików wejściowych, aktualnego stanu plików wyjściowych oraz precyzyjnych wskazówek, a następnie automatycznie zapisuje wygenerowane i ustrukturyzowane zmiany bezpośrednio na dysku.
+Skrypt `mdm.py` umożliwia zautomatyzowaną modyfikację kodu źródłowego, dokumentacji oraz innych plików tekstowych przy użyciu sztucznej inteligencji. Przekazuje on do modelu LLM kontekst w postaci plików wejściowych, aktualnego stanu plików wyjściowych oraz precyzyjnych wskazówek, a następnie automatycznie zapisuje wygenerowane i ustrukturyzowane zmiany bezpośrednio na dysku.
 
 ## Wymagania systemowe i zależności
 * Python w wersji 3.10 lub nowszej
@@ -47,7 +47,7 @@ Skrypt `mdm.py` umożliwia zautomatyzowaną modyfikację kodu źródłowego, dok
 ## Uruchamianie globalne (Windows)
 
 Aby móc wygodnie korzystać z narzędzia `mdm` z dowolnego miejsca w systemie Windows:
-1. Dodaj folder zawierający pliki `mdm.py` oraz `mdm.bat` do systemowej zmiennej środowiskowej **PATH**.
+1. Dodaj folder zawierający pliki `mdm.py` oraz `mdm.bat` do systemowej zmiennej środowiskowej **PATH**. Możesz również zautomatyzować ten proces, uruchamiając dołączony plik `install.bat`.
 2. Od tego momentu możesz wywoływać narzędzie bezpośrednio komendą `mdm` zamiast `python mdm.py`:
    ```cmd
    mdm -i plik.txt -o wynik.txt "zmień tekst"
@@ -67,6 +67,7 @@ Każdy z kluczowych parametrów posiada intuicyjny skrót odpowiadający pierwsz
 * `--inputs`, `-i` (opcjonalne) - Lista ścieżek do plików wejściowych, które stanowią kontekst/źródło danych dla modelu. Obsługuje dzikie karty `*` (globbing) oraz ścieżki do katalogów.
 * `--outputs`, `-o` (opcjonalne) - Lista ścieżek do plików wyjściowych, które mają zostać zmodyfikowane lub utworzone od zera. Jeśli parametr nie zostanie podany, narzędzie może służyć do zadawania pytań (odpowiedź generowana jest jako wyjaśnienie bez zapisu na dysku).
 * `--prompt`, `-p` (opcjonalne) - Instrukcja tekstowa opisująca zmiany, jakie model ma wprowadzić, lub bezpośrednie pytanie.
+* `--model`, `-m` (opcjonalne, domyślnie: `gemini-3.5-flash`) - Wybór modelu LLM z rodziny Gemini (np. `gemini-3.5-flash`, `gemini-2.5-pro`). Ponieważ skrypt korzysta z oficjalnego Google GenAI SDK, obsługa modeli innych dostawców (takich jak OpenAI GPT czy Anthropic Claude) nie jest bezpośrednio wbudowana w silnik API.
 
 ## Zaawansowane funkcje CLI
 
@@ -82,15 +83,25 @@ Każdy z kluczowych parametrów posiada intuicyjny skrót odpowiadający pierwsz
    mdm -i src/*.py -o src/*.py "Dodaj brakujące docstringi"
    ```
 
+4. **Interaktywne tworzenie plików nadmiarowych:**
+   Jeśli model zaproponuje utworzenie plików, których nie podałeś jawnie na liście `-o`, narzędzie zapyta Cię o zgodę przed ich utworzeniem. Daje to dodatkową warstwę bezpieczeństwa i zapobiega niekontrolowanemu generowaniu zasobów w repozytorium.
+
 ## Jak to działa
 1. Skrypt odczytuje zawartość wszystkich wskazanych plików wejściowych (obsługując katalogi i dopasowania typu globbing).
 2. Wyodrębnia instrukcję końcową z ostatniego argumentu linii poleceń, jeśli nie została podana z użyciem `-p`.
 3. Odczytuje obecny stan plików wyjściowych (jeżeli nie istnieją, przekazuje informację o konieczności ich utworzenia od zera).
 4. Buduje szczegółowy prompt zawierający zebrany kontekst oraz instrukcję modyfikacji.
-5. Wysyła zapytanie do modelu `gemini-3.5-flash` przy użyciu mechanizmu **Structured Outputs** (gwarantującego poprawność zwracanego formatu JSON zgodnego ze schematem Pydantic).
-6. Analizuje odpowiedź, wyświetla ewentualne wyjaśnienie i bezpiecznie zapisuje zaktualizowane pliki na dysku (tworząc w razie potrzeby brakujące katalogi nadrzędne).
+5. Wysyła zapytanie do wybranego modelu (np. `gemini-3.5-flash` lub `gemini-2.5-pro`) przy użyciu mechanizmu **Structured Outputs** (gwarantującego poprawność zwracanego formatu JSON zgodnego ze schematem Pydantic).
+6. Analizuje odpowiedź, wyświetla ewentualne wyjaśnienie oraz zestawia listę plików do aktualizacji.
+7. Prosi interaktywnie o zatwierdzenie plików wykraczających poza wykazane ścieżki wyjściowe.
+8. Bezpiecznie zapisuje zaktualizowane pliki na dysku (tworząc w razie potrzeby brakujące katalogi nadrzędne).
 
 ## Przykłady
+
+Wybór bardziej zaawansowanego modelu do skomplikowanej refaktoryzacji:
+```bash
+python mdm.py -i src/*.py -o src/*.py -m gemini-2.5-pro "Przeprowadź głęboką analizę logiczną i popraw błędy współbieżności"
+```
 
 Aktualizacja dokumentacji na podstawie kodu źródłowego przy użyciu wildcards:
 ```bash
