@@ -47,7 +47,7 @@ Skrypt `mdm.py` umożliwia zautomatyzowaną modyfikację kodu źródłowego, dok
 ## Uruchamianie globalne (Windows)
 
 Aby móc wygodnie korzystać z narzędzia `mdm` z dowolnego miejsca w systemie Windows:
-1. Dodaj folder zawierający pliki `mdm.py` oraz `mdm.bat` do systemowej zmiennej środowiskowej **PATH**.
+1. Dodaj folder zawierający pliki `mdm.py` oraz `mdm.bat` do systemowej zmiennej środowiskowej **PATH**. Możesz również zautomatyzować ten proces, uruchamiając dołączony plik `install.bat`.
 2. Od tego momentu możesz wywoływać narzędzie bezpośrednio komendą `mdm` zamiast `python mdm.py`:
    ```cmd
    mdm -i plik.txt -o wynik.txt "zmień tekst"
@@ -83,13 +83,18 @@ Każdy z kluczowych parametrów posiada intuicyjny skrót odpowiadający pierwsz
    mdm -i src/*.py -o src/*.py "Dodaj brakujące docstringi"
    ```
 
+4. **Interaktywne tworzenie plików nadmiarowych:**
+   Jeśli model zaproponuje utworzenie plików, których nie podałeś jawnie na liście `-o`, narzędzie zapyta Cię o zgodę przed ich utworzeniem. Daje to dodatkową warstwę bezpieczeństwa i zapobiega niekontrolowanemu generowaniu zasobów w repozytorium.
+
 ## Jak to działa
 1. Skrypt odczytuje zawartość wszystkich wskazanych plików wejściowych (obsługując katalogi i dopasowania typu globbing).
 2. Wyodrębnia instrukcję końcową z ostatniego argumentu linii poleceń, jeśli nie została podana z użyciem `-p`.
 3. Odczytuje obecny stan plików wyjściowych (jeżeli nie istnieją, przekazuje informację o konieczności ich utworzenia od zera).
 4. Buduje szczegółowy prompt zawierający zebrany kontekst oraz instrukcję modyfikacji.
 5. Wysyła zapytanie do wybranego modelu (np. `gemini-3.5-flash` lub `gemini-2.5-pro`) przy użyciu mechanizmu **Structured Outputs** (gwarantującego poprawność zwracanego formatu JSON zgodnego ze schematem Pydantic).
-6. Analizuje odpowiedź, wyświetla ewentualne wyjaśnienie i bezpiecznie zapisuje zaktualizowane pliki na dysku (tworząc w razie potrzeby brakujące katalogi nadrzędne).
+6. Analizuje odpowiedź, wyświetla ewentualne wyjaśnienie oraz zestawia listę plików do aktualizacji.
+7. Prosi interaktywnie o zatwierdzenie plików wykraczających poza wykazane ścieżki wyjściowe.
+8. Bezpiecznie zapisuje zaktualizowane pliki na dysku (tworząc w razie potrzeby brakujące katalogi nadrzędne).
 
 ## Przykłady
 
